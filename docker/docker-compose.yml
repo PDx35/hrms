@@ -1,4 +1,3 @@
-
 services:
   mariadb:
     image: mariadb:10.8
@@ -6,14 +5,18 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
+      - --skip-innodb-read-only-compressed
     environment:
       MYSQL_ROOT_PASSWORD: 123
     volumes:
       - mariadb-data:/var/lib/mysql
+    networks:
+      - internal
 
   redis:
     image: redis:alpine
+    networks:
+      - internal
 
   frappe:
     image: frappe/bench:latest
@@ -23,9 +26,26 @@ services:
     working_dir: /home/frappe
     volumes:
       - .:/workspace
-    ports:
-      - 8000:8000
-      - 9000:9000
+    networks:
+      - internal
+      - dokploy-network          # joins Traefik's network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frappe.rule=Host(`hr.techshephard.com`)"
+      - "traefik.http.routers.frappe.entrypoints=websecure"
+      - "traefik.http.routers.frappe.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frappe.loadbalancer.server.port=8000"
+      # Redirect HTTP → HTTPS
+      - "traefik.http.routers.frappe-http.rule=Host(`hr.techshephard.com`)"
+      - "traefik.http.routers.frappe-http.entrypoints=web"
+      - "traefik.http.routers.frappe-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+
+networks:
+  internal:
+    driver: bridge
+  dokploy-network:
+    external: true              # Traefik's shared network in Dokploy
 
 volumes:
   mariadb-data:
